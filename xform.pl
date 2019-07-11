@@ -5,6 +5,7 @@ use strict;
 use warnings;
 
 package main;
+use Data::Dumper;
 use List::Util qw<first>;
 
 use MARC;
@@ -15,6 +16,8 @@ MARC::Set->new->iterate_xml(
 	path => $ARGV[0],
 	callback => sub {
 		my $r = shift;
+		
+		my $series = $ARGV[1] // die "Must provide series name";
 		
 		_001_035: {
 			my $ctr = '(IFAD)'.$r->id;
@@ -52,14 +55,27 @@ MARC::Set->new->iterate_xml(
 			$r->add_field(MARC::Field->new(tag => '191')->set_sub('b','IFAD/'));
 		}
 		
+		_245: {
+			my $f = first {$_} $r->get_fields('245');
+			my $title = $f->get_sub('a');
+			
+			my $article = $1 if $title =~ /^(A|An|The)/;
+			if ($article) {
+				$f->ind2(length $article);
+			} 	
+		}
+		
 		_260_269: {
 			my $f = first {$_} $r->get_fields('260');
 			
-			my ($a,$b,$c) = $f->list_subfield_values(qw<a b c>);
-			$f->set_sub('a',$a.':', replace => 1);
-			$f->set_sub('b',$b.',', replace => 1);
+			my $a = $f->get_sub('a');
+			$f->set_sub('a',$a.':', replace => 1) if $a;
 			
-			$r->add_field(MARC::Field->new(tag => '269')->set_sub('a',$c));
+			my $b = $f->get_sub('b');
+			$f->set_sub('b',$b.',', replace => 1) if $b;
+			
+			my $c = $f->get_sub('c');
+			$r->add_field(MARC::Field->new(tag => '269')->set_sub('a',$c)) if $c;
 		}
 		
 		_598: {
@@ -71,7 +87,7 @@ MARC::Set->new->iterate_xml(
 		}
 		
 		_830: {
-			$r->add_field(MARC::Field->new(tag => '830')->set_sub('a','IFAD Research Series'));
+			$r->add_field(MARC::Field->new(tag => '830')->set_sub('a',$series));
 		}
 		
 		_852: {
@@ -106,7 +122,11 @@ MARC::Set->new->iterate_xml(
 			$r->delete_tag('999');
 		}
 		
-		print $r->to_xml;
+		if ($ARGV[2] && $ARGV[2] eq 'mrk') {
+			print $r->to_mrk;
+		} else {
+			print $r->to_xml;
+		}
 	}
 );
 
